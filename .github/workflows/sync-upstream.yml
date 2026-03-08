@@ -1,0 +1,54 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: "0 */6 * * *" # every 6 hours
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write # needed to trigger downstream workflows via tag push
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/openclaw/openclaw.git
+
+      - name: Sync main from upstream
+        run: |
+          set -euo pipefail
+          git fetch upstream main
+          git checkout main
+          git rebase upstream/main
+          git push origin main
+
+      - name: Detect and push new stable upstream tags
+        run: |
+          set -euo pipefail
+          git fetch upstream --tags
+
+          # Latest stable tag from upstream (no pre-release suffix)
+          latest=$(git tag -l 'v*' --sort=-version:refname \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$' \
+            | head -1)
+
+          echo "Latest stable upstream tag: $latest"
+
+          # Check if fork already has it
+          if git ls-remote --tags origin "refs/tags/${latest}" | grep -q .; then
+            echo "Tag ${latest} already on fork — nothing to do."
+            exit 0
+          fi
+
+          echo "New tag detected: ${latest} — pushing to fork (triggers browser-release)"
+          git push origin "${latest}"
