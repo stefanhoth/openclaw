@@ -1,7 +1,9 @@
+# ARG must be declared before the first FROM to be usable in FROM instructions
+ARG BASE_IMAGE=openclaw:local
+
 FROM golang:1.26-alpine AS blogwatcher-builder
 RUN go install github.com/Hyaxia/blogwatcher/cmd/blogwatcher@latest
 
-ARG BASE_IMAGE=openclaw:local
 FROM ${BASE_IMAGE}
 ARG OPENCLAW_VERSION=dev
 ENV OPENCLAW_BUNDLED_VERSION=${OPENCLAW_VERSION}
