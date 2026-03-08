@@ -1,0 +1,35 @@
+FROM golang:1.26-alpine AS blogwatcher-builder
+RUN go install github.com/Hyaxia/blogwatcher/cmd/blogwatcher@latest
+
+ARG BASE_IMAGE=openclaw:local
+FROM ${BASE_IMAGE}
+ARG OPENCLAW_VERSION=dev
+ENV OPENCLAW_BUNDLED_VERSION=${OPENCLAW_VERSION}
+
+USER root
+
+# UID/GID anpassen
+RUN usermod -u 1500 node && groupmod -g 1500 node
+RUN groupadd --gid 2500 obsidian && usermod -aG obsidian node
+RUN chown -R 1500:1500 /app && chown -R 1500:1500 /home/node
+
+# System-Packages (ffmpeg etc. via OPENCLAW_DOCKER_APT_PACKAGES wäre auch möglich,
+# aber whisper braucht pip, also hier besser manuell)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    python3-pip \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Whisper
+RUN pip3 install openai-whisper --break-system-packages
+RUN python3 -c "import whisper; whisper.load_model('base')"
+
+# blogwatcher
+COPY --from=blogwatcher-builder /go/bin/blogwatcher /usr/local/bin/blogwatcher
+
+# mcporter
+RUN npm install -g mcporter && npm cache clean --force
+
+USER node
+
