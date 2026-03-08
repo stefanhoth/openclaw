@@ -2,6 +2,8 @@ services:
   openclaw-gateway:
     image: ghcr.io/stefanhoth/openclaw-custom:latest
     user: "1500:1500"
+    group_add:
+      - "2500"
     environment:
       HOME: /home/node
       TERM: xterm-256color
@@ -67,6 +69,8 @@ services:
   openclaw-cli:
     image: ghcr.io/stefanhoth/openclaw-custom:latest
     user: "1500:1500"
+    group_add:
+      - "2500"
     network_mode: "service:openclaw-gateway"
     environment:
       HOME: /home/node
