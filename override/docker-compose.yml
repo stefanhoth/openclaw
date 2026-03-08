@@ -1,0 +1,105 @@
+services:
+  openclaw-gateway:
+    image: ghcr.io/stefanhoth/openclaw-custom:latest
+    user: "1500:1500"
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-}
+      OPENCLAW_ALLOW_INSECURE_PRIVATE_WS: ${OPENCLAW_ALLOW_INSECURE_PRIVATE_WS:-}
+      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY:-}
+      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY:-}
+      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE:-}
+    env_file:
+      - .env
+    volumes:
+      - /opt/openclaw/config:/home/node/.openclaw
+      - /opt/openclaw/workspaces:/home/node/.openclaw/workspaces
+      - /opt/openclaw/config/mcporter.json:/app/config/mcporter.json
+      - /opt/obsidian/ob-vault:/home/node/obsidian-vault
+    ports:
+      - "${OPENCLAW_GATEWAY_PORT:-18789}:18789"
+      - "${OPENCLAW_BRIDGE_PORT:-18790}:18790"
+    init: true
+    restart: unless-stopped
+    command:
+      [
+        "node",
+        "dist/index.js",
+        "gateway",
+        "--bind",
+        "${OPENCLAW_GATEWAY_BIND:-lan}",
+        "--port",
+        "18789",
+      ]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - NET_ADMIN
+      - NET_RAW
+    networks:
+      - default
+      - openclaw-internal
+    deploy:
+      resources:
+        limits:
+          memory: 900m
+        reservations:
+          memory: 256m
+
+  openclaw-cli:
+    image: ghcr.io/stefanhoth/openclaw-custom:latest
+    user: "1500:1500"
+    network_mode: "service:openclaw-gateway"
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-}
+      OPENCLAW_ALLOW_INSECURE_PRIVATE_WS: ${OPENCLAW_ALLOW_INSECURE_PRIVATE_WS:-}
+      BROWSER: echo
+      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY:-}
+      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY:-}
+      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE:-}
+    volumes:
+      - /opt/openclaw/config:/home/node/.openclaw
+      - /opt/openclaw/workspaces:/home/node/.openclaw/workspaces
+      - /opt/obsidian/ob-vault:/home/node/obsidian-vault
+    stdin_open: true
+    tty: true
+    init: true
+    entrypoint: ["node", "dist/index.js"]
+    depends_on:
+      - openclaw-gateway
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          memory: 400m
+        reservations:
+          memory: 128m
+
+networks:
+  default:
+    name: openclaw-src_default
+  openclaw-internal:
+    external: true
