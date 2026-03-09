@@ -5,7 +5,7 @@
 The fork of `openclaw/openclaw` was created solely to override the `BASE_IMAGE` Docker build arg. This is more complexity than it's worth:
 
 - Syncing with upstream is fragile (rebase conflicts, SHA mismatches on push)
-- The official `ghcr.io/openclaw/openclaw-browser:latest` image already exists with Chromium pre-installed — there is no need to rebuild it
+- There is no separate `openclaw-browser` image in the official org — the plain `ghcr.io/openclaw/openclaw` image is the correct base; playwright is installed fresh in the custom Dockerfile
 - All custom additions (whisper, blogwatcher, mcporter) only need a thin layer on top
 
 ## Target: New standalone repo
@@ -39,7 +39,7 @@ Layer caching optimisations applied:
 
 ```dockerfile
 # ARG must be declared before first FROM to be usable in FROM instructions
-ARG BASE_IMAGE=ghcr.io/openclaw/openclaw-browser:latest
+ARG BASE_IMAGE=ghcr.io/openclaw/openclaw:2026.3.7
 
 FROM golang:1.26-alpine AS blogwatcher-builder
 RUN go install github.com/Hyaxia/blogwatcher/cmd/blogwatcher@latest
@@ -105,7 +105,7 @@ Triggers:
 Key build flag: `--pull` so Docker always fetches the latest base image. No tag-detection or sync logic needed.
 
 OCI labels to include:
-- `org.opencontainers.image.base.name: ghcr.io/openclaw/openclaw-browser:latest`
+- `org.opencontainers.image.base.name: ghcr.io/openclaw/openclaw:2026.3.7`
 - `org.opencontainers.image.revision`
 - `org.opencontainers.image.created`
 - `ai.openclaw.base.version` — resolved from the latest stable git tag of openclaw/openclaw at build time
