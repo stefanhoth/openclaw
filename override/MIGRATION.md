@@ -23,6 +23,20 @@ openclaw-custom/
 
 ### Dockerfile
 
+Key differences from the fork version:
+- Full `playwright` package (not `playwright-core`) so the playwright API works correctly
+- Proper three-step playwright install: global install as root → `npx playwright install` as node (browser binaries) → `npx playwright install-deps` as root (system deps)
+- `OPENCLAW_VERSION`/`OPENCLAW_BUNDLED_VERSION` dropped — only needed when building openclaw itself; the official image already has its version baked in
+- UID/GID changes kept for VPS deployment
+
+Layer caching optimisations applied:
+- UID/GID changes combined into one `RUN` (stable, rarely busts cache)
+- `apt-get` for custom packages runs before npm/pip work (stable)
+- Whisper pip install + model download combined into one `RUN` with `--no-cache-dir`
+- mcporter + playwright npm installs combined into one `RUN`, cache cleaned in the same layer (no `npm install -g npm` — unnecessary layer)
+- `apt-get clean` after `playwright install-deps` (that step pulls additional system packages)
+- Order: most-stable layers first → least-stable last, so a version bump of mcporter/playwright doesn't bust the whisper or blogwatcher cache
+
 ```dockerfile
 # ARG must be declared before first FROM to be usable in FROM instructions
 ARG BASE_IMAGE=ghcr.io/openclaw/openclaw-browser:latest
@@ -34,27 +48,43 @@ FROM ${BASE_IMAGE}
 
 USER root
 
-# UID/GID
-RUN usermod -u 1500 node && groupmod -g 1500 node
-RUN groupadd --gid 2500 obsidian && usermod -aG obsidian node
-RUN chown -R 1500:1500 /app && chown -R 1500:1500 /home/node
+# UID/GID in one layer (almost never changes)
+RUN usermod -u 1500 node \
+    && groupmod -g 1500 node \
+    && groupadd --gid 2500 obsidian \
+    && usermod -aG obsidian node \
+    && chown -R 1500:1500 /app \
+    && chown -R 1500:1500 /home/node
 
-# System packages
+# System packages (rarely changes)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     python3-pip \
+    curl \
+    git \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Whisper (base model pre-downloaded at build time)
-RUN pip3 install openai-whisper --break-system-packages
-RUN python3 -c "import whisper; whisper.load_model('base')"
+# Whisper — install + pre-download model in one layer, no pip cache
+RUN pip3 install openai-whisper --break-system-packages --no-cache-dir \
+    && python3 -c "import whisper; whisper.load_model('base')"
 
-# blogwatcher
+# blogwatcher (busts only when the Go binary changes)
 COPY --from=blogwatcher-builder /go/bin/blogwatcher /usr/local/bin/blogwatcher
 
-# mcporter
-RUN npm install -g mcporter && npm cache clean --force
+# npm packages in one layer; clean cache immediately to keep layer small
+# Full playwright (not playwright-core) — required for playwright API to work correctly
+RUN npm install -g mcporter playwright \
+    && npm cache clean --force
+
+# Playwright browser binaries as node, system deps as root
+USER node
+RUN npx playwright install
+
+USER root
+RUN npx playwright install-deps \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 USER node
 ```
